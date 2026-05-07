@@ -14,7 +14,7 @@ import sys
 import struct
 import argparse
 from io import BytesIO
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 
 # ── .NET assembly loading via pythonnet ──
 
@@ -61,6 +61,7 @@ class LCD5AController:
         self.VERSION = LCD_IC_VERSION
 
         callback = LogCallbackFun(lambda msg: None)
+        print("[Scanning] Looking for LCD5A...")
         devices = LCD.GetLCDGeneralCOM(callback)
 
         if not devices or len(devices) == 0:
@@ -73,6 +74,8 @@ class LCD5AController:
                     self._invoke("SetLang", 1)
                 except Exception:
                     pass
+                print("[Connected] LCD5A ready")
+                return True
                 return True
 
         raise Exception("No LCD5A found in scan results.")
@@ -116,16 +119,20 @@ class LCD5AController:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
+        size_kb = os.path.getsize(file_path) / 1024
+        print(f"[Upload] {os.path.basename(file_path)} ({size_kb:.0f}KB) as '{name}'")
         task = self._invoke("UploadImage", name, file_path)
         ok = task.GetAwaiter().GetResult()
 
         if ok:
+            print("[OK] Uploaded, playing...")
             try:
                 self._invoke("SetStartIMG", name)
             except Exception:
                 pass
             self._invoke("PlayMov", name)
             return True
+        print("[FAIL] Upload returned false")
         return False
 
 
@@ -145,6 +152,17 @@ CENTER_Y = 132   # (24 + 240) / 2
 
 def _make_image(width=CANVAS_W, height=CANVAS_H, bg=(240, 240, 250)):
     return Image.new("RGB", (width, height), bg)
+
+
+def _enhance_for_lcd(img):
+    """Boost brightness if image is too dark for the LCD (avg < 150 -> boost to ~180)."""
+    pixels = list(img.getdata())
+    n = len(pixels) * 3
+    avg = sum(sum(p[:3]) for p in pixels) / max(n, 1)
+    if avg < 150:
+        factor = min(2.5, 180 / max(avg, 1))
+        img = ImageEnhance.Brightness(img).enhance(factor)
+    return img
 
 
 def _find_font(size=60):
@@ -224,17 +242,52 @@ def make_status_pak(status, message=""):
 
 def make_image_pak(image_path, quality=60):
     """Generate PAK from an image file (resized to canvas)."""
-    img = Image.open(image_path).convert("RGB")
+    img = _enhance_for_lcd(Image.open(image_path).convert("RGB"))
     img = img.resize((CANVAS_W, CANVAS_H), Image.LANCZOS)
     return _image_to_pak(img, quality=quality)
 
 
 def make_image_visible_pak(image_path, quality=60):
     """Generate PAK from an image, sized to the visible area (800x216)."""
-    img = Image.open(image_path).convert("RGB")
+    img = _enhance_for_lcd(Image.open(image_path).convert("RGB"))
     canvas = _make_image()
     img_resized = img.resize((VISIBLE_W, VISIBLE_H), Image.LANCZOS)
     canvas.paste(img_resized, (VISIBLE_X, VISIBLE_Y))
+    return _image_to_pak(canvas, quality=quality)
+
+
+def make_image_text_pak(image_path, text, font_size=36, text_bottom=True, quality=60):
+    """Generate PAK with image in visible area + text overlay."""
+    img = _enhance_for_lcd(Image.open(image_path).convert("RGB"))
+    img = img.resize((VISIBLE_W, VISIBLE_H), Image.LANCZOS)
+
+    # Overlay text
+    draw = ImageDraw.Draw(img)
+    font = _find_font(font_size)
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+
+    if text_bottom:
+        # Semi-transparent bar at bottom
+        bar_h = th + 20
+        overlay = Image.new("RGBA", (VISIBLE_W, bar_h), (0, 0, 0, 160))
+        img_rgba = img.convert("RGBA")
+        img_rgba.paste(overlay, (0, VISIBLE_H - bar_h), overlay)
+        img = img_rgba.convert("RGB")
+        tx = (VISIBLE_W - tw) // 2
+        ty = VISIBLE_H - bar_h + (bar_h - th) // 2
+    else:
+        tx = (VISIBLE_W - tw) // 2
+        ty = (VISIBLE_H - th) // 2
+
+    draw = ImageDraw.Draw(img)
+    draw.text((tx, ty), text, fill=(255, 255, 255), font=font)
+
+    # Paste onto full canvas
+    canvas = _make_image()
+    canvas.paste(img, (VISIBLE_X, VISIBLE_Y))
     return _image_to_pak(canvas, quality=quality)
 
 
@@ -264,6 +317,12 @@ def main():
 
     p_imgv = sub.add_parser("imagev", help="Display an image (visible area only)")
     p_imgv.add_argument("path")
+
+    p_imgtxt = sub.add_parser("imagetext", help="Display image with text overlay")
+    p_imgtxt.add_argument("path")
+    p_imgtxt.add_argument("text", nargs="+")
+    p_imgtxt.add_argument("--bottom", action="store_true", default=True)
+    p_imgtxt.add_argument("--size", type=int, default=36)
 
     p_upload = sub.add_parser("upload", help="Upload a PAK/GIF file")
     p_upload.add_argument("path")
@@ -316,6 +375,13 @@ def main():
             with open(TEMP_PAK, "wb") as f:
                 f.write(pak)
             lcd.upload_and_play(TEMP_PAK, "_imagev")
+
+        elif args.cmd == "imagetext":
+            text = " ".join(args.text)
+            pak = make_image_text_pak(args.path, text, font_size=args.size, text_bottom=args.bottom)
+            with open(TEMP_PAK, "wb") as f:
+                f.write(pak)
+            lcd.upload_and_play(TEMP_PAK, "_imgtxt")
 
         elif args.cmd == "upload":
             lcd.upload_and_play(args.path, args.name)
