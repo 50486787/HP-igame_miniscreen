@@ -1,0 +1,13 @@
+# iGame API binaries (proprietary, from iGameCenter installation)
+bin/
+
+# Python
+__pycache__/
+*.pyc
+
+# Temp files
+_temp_*.pak
+*.pak
+
+# Claude Code
+.claude/
