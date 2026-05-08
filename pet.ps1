@@ -17,6 +17,7 @@ function Menu {
     Write-Host "  [5] List files"
     Write-Host "  [6] Upload GIF"
     Write-Host "  [7] Switch between files"
+    Write-Host "  [8] Delete a file"
     Write-Host "  [0] Exit"
     Write-Host ""
 }
@@ -54,6 +55,12 @@ do {
         }
         "7" {
             python lcd_display.py switch
+            pause
+        }
+        "8" {
+            python lcd_display.py list
+            $name = Read-Host "File name to delete"
+            python lcd_display.py delete $name
             pause
         }
     }

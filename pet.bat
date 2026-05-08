@@ -13,6 +13,7 @@ echo   [4] Show default animation
 echo   [5] List files
 echo   [6] Upload a GIF
 echo   [7] Switch between files
+echo   [8] Delete a file
 echo   [0] Exit
 echo.
 set /p choice="Choose: "
@@ -24,6 +25,7 @@ if "%choice%"=="4" goto :default
 if "%choice%"=="5" goto :list
 if "%choice%"=="6" goto :upload
 if "%choice%"=="7" goto :switch
+if "%choice%"=="8" goto :delete
 if "%choice%"=="0" exit /b 0
 goto :menu
 
@@ -62,5 +64,13 @@ goto :menu
 
 :switch
 python lcd_display.py switch
+pause
+goto :menu
+
+:delete
+python lcd_display.py list
+echo.
+set /p name="File name to delete: "
+python lcd_display.py delete "%name%"
 pause
 goto :menu
