@@ -1,0 +1,53 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:\\Users\\qq504\\Desktop\\人工智能学习\\claude_code\\iGamePet\\lcd_display.py\" play _idle",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:\\Users\\qq504\\Desktop\\人工智能学习\\claude_code\\iGamePet\\lcd_display.py\" play _working",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "python 'C:\\Users\\qq504\\Desktop\\人工智能学习\\claude_code\\iGamePet\\lcd_display.py' play _done; Start-Sleep -Seconds 60; python 'C:\\Users\\qq504\\Desktop\\人工智能学习\\claude_code\\iGamePet\\lcd_display.py' play _idle",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:\\Users\\qq504\\Desktop\\人工智能学习\\claude_code\\iGamePet\\lcd_display.py\" play _fail",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

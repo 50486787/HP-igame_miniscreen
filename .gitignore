@@ -7,5 +7,6 @@ output/
 _temp_*.pak
 *.pak
 
-# Claude Code
-.claude/
+# Claude Code (only settings.json is tracked)
+.claude/**
+!.claude/settings.json
