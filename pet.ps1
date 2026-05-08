@@ -16,6 +16,7 @@ function Menu {
     Write-Host "  [4] Show default animation"
     Write-Host "  [5] List files"
     Write-Host "  [6] Upload GIF"
+    Write-Host "  [7] Switch between files"
     Write-Host "  [0] Exit"
     Write-Host ""
 }
@@ -49,6 +50,10 @@ do {
         "6" {
             $gif = Read-Host "GIF file path"
             python lcd_display.py upload $gif
+            pause
+        }
+        "7" {
+            python lcd_display.py switch
             pause
         }
     }

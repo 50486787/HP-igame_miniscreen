@@ -4,6 +4,7 @@ Usage:
   python lcd_display.py text "Hello World"
   python lcd_display.py image cat.png
   python lcd_display.py play mypet
+  python lcd_display.py switch   -- interactive switch between stored files
   python lcd_display.py list
   python lcd_display.py done     -- show success notification
   python lcd_display.py fail "Build error"  -- show failure notification
@@ -359,6 +360,8 @@ def main():
     p_live = sub.add_parser("live", help="Interactive live text display")
     p_live.add_argument("--size", type=int, default=60, help="Font size")
 
+    p_switch = sub.add_parser("switch", help="Interactive switch between stored files")
+
     sub.add_parser("done", help="Show success notification")
     p_fail = sub.add_parser("fail", help="Show failure notification")
     p_fail.add_argument("message", nargs="*")
@@ -442,6 +445,38 @@ def main():
                 except Exception:
                     pass
                 print("  -> displayed")
+
+        elif args.cmd == "switch":
+            files = lcd.list_files()
+            if not files:
+                print("(no files stored)")
+                return
+            files.sort(key=lambda x: x[0].lower())
+            print("=== Stored Files ===")
+            for i, (name, size) in enumerate(files):
+                print(f"  [{i}] {name} ({size // 1024}KB)")
+            print()
+            while True:
+                try:
+                    choice = input("Switch to (number/name, Enter to exit): ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    print("\nBye.")
+                    break
+                if not choice:
+                    break
+                # Try number first, then name
+                name = None
+                if choice.isdigit():
+                    idx = int(choice)
+                    if 0 <= idx < len(files):
+                        name = files[idx][0]
+                else:
+                    name = choice
+                if name:
+                    print(f"  -> {name}")
+                    lcd.play(name)
+                else:
+                    print("  Invalid choice")
 
         elif args.cmd == "upload":
             lcd.upload_and_play(args.path, args.name)
