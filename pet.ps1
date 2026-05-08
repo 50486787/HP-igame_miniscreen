@@ -58,9 +58,7 @@ do {
             pause
         }
         "8" {
-            python lcd_display.py list
-            $name = Read-Host "File name to delete"
-            python lcd_display.py delete $name
+            python lcd_display.py delete
             pause
         }
     }

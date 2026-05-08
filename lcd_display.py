@@ -6,6 +6,9 @@ Usage:
   python lcd_display.py play mypet
   python lcd_display.py switch   -- interactive switch between stored files
   python lcd_display.py list
+  python lcd_display.py delete          -- interactive delete (by number/name/all)
+  python lcd_display.py delete all      -- delete all files
+  python lcd_display.py delete mypet    -- delete by name
   python lcd_display.py done     -- show success notification
   python lcd_display.py fail "Build error"  -- show failure notification
 """
@@ -272,8 +275,8 @@ def main():
     p_play = sub.add_parser("play", help="Play a stored file")
     p_play.add_argument("name")
 
-    p_del = sub.add_parser("delete", help="Delete a stored file")
-    p_del.add_argument("name")
+    p_del = sub.add_parser("delete", help="Delete stored files (interactive)")
+    p_del.add_argument("name", nargs="?", help="File name/number, or 'all' to delete everything")
 
     p_text = sub.add_parser("text", help="Display text on screen")
     p_text.add_argument("text", nargs="+")
@@ -327,7 +330,42 @@ def main():
             lcd.play(args.name)
 
         elif args.cmd == "delete":
-            lcd.delete(args.name)
+            files = lcd.list_files()
+            if not files:
+                print("(no files stored)")
+                return
+
+            target = args.name
+            if target is None:
+                # Interactive mode: show numbered list
+                files.sort(key=lambda x: x[0].lower())
+                print("=== Delete Files ===")
+                for i, (name, size) in enumerate(files):
+                    print(f"  [{i}] {name} ({size // 1024}KB)")
+                print(f"  [a] Delete ALL ({len(files)} files)")
+                print()
+                target = input("Delete (number/name/a): ").strip()
+                if not target:
+                    return
+
+            if target.lower() == "a" or target.lower() == "all":
+                for name, _ in files:
+                    print(f"  Deleting {name}...")
+                    lcd.delete(name)
+                print(f"[OK] Deleted {len(files)} files")
+            elif target.isdigit():
+                idx = int(target)
+                if 0 <= idx < len(files):
+                    name = files[idx][0]
+                    print(f"  Deleting [{idx}] {name}")
+                    lcd.delete(name)
+                    print("[OK] Deleted")
+                else:
+                    print(f"Invalid number: {idx}")
+            else:
+                print(f"  Deleting {target}")
+                lcd.delete(target)
+                print("[OK] Deleted")
 
         elif args.cmd == "text":
             text = " ".join(args.text)

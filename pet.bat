@@ -68,9 +68,6 @@ pause
 goto :menu
 
 :delete
-python lcd_display.py list
-echo.
-set /p name="File name to delete: "
-python lcd_display.py delete "%name%"
+python lcd_display.py delete
 pause
 goto :menu
