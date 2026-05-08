@@ -7,12 +7,9 @@ Output can be GIF (for preview) or PAK (for direct upload).
 import argparse
 import os
 import math
-import struct
-from io import BytesIO
 from PIL import Image, ImageDraw
+from pak_utils import VISIBLE_W, VISIBLE_H, build_pak
 
-VISIBLE_W = 800
-VISIBLE_H = 216
 BG = (40, 42, 54)       # dark background
 CAT_BODY = (255, 180, 100)
 CAT_DARK = (200, 130, 60)
@@ -164,33 +161,15 @@ def generate_frames(num_frames=30):
 
 
 def frames_to_pak(frames, quality=60, rotate=True):
-    """Convert PIL Image frames to PAK binary (JPEG compression)."""
-    pak_frames = []
+    """Convert PIL Image frames to PAK binary. Frames are 800x216 (visible area),
+    pasted onto full 1024x240 canvas before encoding."""
+    from pak_utils import CANVAS_W, CANVAS_H, VISIBLE_X, VISIBLE_Y
+    full_frames = []
     for img in frames:
-        canvas = Image.new("RGB", (1024, 240), (0, 0, 0))
-        canvas.paste(img, (224, 24))
-        if rotate:
-            canvas = canvas.transpose(Image.ROTATE_180)
-        buf = BytesIO()
-        canvas.save(buf, format="JPEG", quality=quality)
-        pak_frames.append(buf.getvalue())
-
-    n = len(pak_frames)
-    header = b"JP" + struct.pack("<HI", n, 0x0C)
-    header += b"\x00" * (n * 4)
-
-    offset_table = b""
-    frame_data = b""
-    current_offset = len(header)
-    for jpeg_data in pak_frames:
-        offset_table += struct.pack("<I", current_offset)
-        entry = struct.pack("<I", len(jpeg_data)) + jpeg_data
-        while len(entry) % 4 != 0:
-            entry += b"\x00"
-        frame_data += entry
-        current_offset = len(header) + len(frame_data)
-
-    return header[:8] + offset_table + frame_data
+        canvas = Image.new("RGB", (CANVAS_W, CANVAS_H), (0, 0, 0))
+        canvas.paste(img, (VISIBLE_X, VISIBLE_Y))
+        full_frames.append(canvas)
+    return build_pak(full_frames, quality=quality, rotate=rotate)
 
 
 def main():

@@ -1,4 +1,8 @@
-"""Direct LCD5A control via USB HID - no iGameCenter needed."""
+"""Direct LCD5A control via USB HID - no iGameCenter needed.
+
+NOTE: This is a HID protocol research reference. Upload does not work yet.
+For actual LCD5A control, use lcd_display.py which uses the iGame API.
+"""
 import hid
 import struct
 import time

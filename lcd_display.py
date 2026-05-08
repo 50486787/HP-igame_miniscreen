@@ -12,10 +12,13 @@ Usage:
 
 import os
 import sys
-import struct
 import argparse
-from io import BytesIO
-from PIL import Image, ImageDraw, ImageFont, ImageEnhance
+import tempfile
+from PIL import Image, ImageDraw
+from pak_utils import (CANVAS_W, CANVAS_H, VISIBLE_X, VISIBLE_Y,
+                       VISIBLE_W, VISIBLE_H, CENTER_X, CENTER_Y,
+                       make_canvas, find_font, enhance_for_lcd,
+                       build_pak_from_jpeg_bytes, image_to_jpeg)
 
 # ── .NET assembly loading via pythonnet ──
 
@@ -126,11 +129,15 @@ class LCD5AController:
         # Auto-convert GIF to PAK to avoid black-screen bug
         ext = os.path.splitext(file_path)[1].lower()
         if ext in (".gif", ".giff"):
-            import tempfile
             from gif_to_pak import gif_to_pak
-            tmp = tempfile.mktemp(suffix=".pak")
-            gif_to_pak(file_path, tmp, quality=60)
-            file_path = tmp
+            tf = tempfile.NamedTemporaryFile(suffix=".pak", delete=False)
+            tf.close()
+            try:
+                gif_to_pak(file_path, tf.name, quality=60)
+                file_path = tf.name
+            except Exception:
+                os.unlink(tf.name)
+                raise
 
         size_kb = os.path.getsize(file_path) / 1024
         print(f"[Upload] {os.path.basename(file_path)} ({size_kb:.0f}KB) as '{name}'")
@@ -150,79 +157,12 @@ class LCD5AController:
 
 # ── PAK generation ──
 
-# Canvas: 1024x240. Bezel covers left ~224px.
-# Visible area: x=224..1024, y=24..240 (800x216 effective)
-CANVAS_W = 1024
-CANVAS_H = 240
-VISIBLE_X = 224
-VISIBLE_Y = 24
-VISIBLE_W = 800
-VISIBLE_H = 216
-CENTER_X = 624   # (224 + 1024) / 2
-CENTER_Y = 132   # (24 + 240) / 2
-
-
-def _make_image(width=CANVAS_W, height=CANVAS_H, bg=(240, 240, 250)):
-    return Image.new("RGB", (width, height), bg)
-
-
-def _enhance_for_lcd(img):
-    """Boost brightness if image is too dark for the LCD (avg < 150 -> boost to ~180)."""
-    pixels = list(img.getdata())
-    n = len(pixels) * 3
-    avg = sum(sum(p[:3]) for p in pixels) / max(n, 1)
-    if avg < 150:
-        factor = min(2.5, 180 / max(avg, 1))
-        img = ImageEnhance.Brightness(img).enhance(factor)
-    return img
-
-
-def _find_font(size=60):
-    for fp in [
-        "C:/Windows/Fonts/msyh.ttc",
-        "C:/Windows/Fonts/msyhbd.ttc",
-        "C:/Windows/Fonts/simhei.ttf",
-        "C:/Windows/Fonts/simsun.ttc",
-        "C:/Windows/Fonts/arial.ttf",
-    ]:
-        try:
-            return ImageFont.truetype(fp, size)
-        except Exception:
-            continue
-    return ImageFont.load_default()
-
-
-def _image_to_pak(img, num_frames=3, quality=30):
-    """Convert PIL Image to PAK bytes. Screen is rotated 180 degrees."""
-    img = img.transpose(Image.ROTATE_180)
-
-    buf = BytesIO()
-    img.save(buf, format="JPEG", quality=quality)
-    jpeg_data = buf.getvalue()
-
-    header = b"JP" + struct.pack("<HI", num_frames, 0x0C)
-    header += b"\x00" * (num_frames * 4)
-
-    offset_table = b""
-    frame_data = b""
-    current_offset = len(header)
-
-    for _ in range(num_frames):
-        offset_table += struct.pack("<I", current_offset)
-        entry = struct.pack("<I", len(jpeg_data)) + jpeg_data
-        while len(entry) % 4 != 0:
-            entry += b"\x00"
-        frame_data += entry
-        current_offset = len(header) + len(frame_data)
-
-    return header[:8] + offset_table + frame_data
-
 
 def _text_to_pak_fast(text, font_size=60, fg=(255, 255, 255), bg=(30, 30, 30)):
     """Single-frame PAK for live text (fast upload)."""
-    img = _make_image(bg=bg)
+    img = make_canvas(bg=bg)
     draw = ImageDraw.Draw(img)
-    font = _find_font(font_size)
+    font = find_font(font_size)
 
     lines = text.replace("\\n", "\n").split("\n")
     n = len(lines)
@@ -232,25 +172,26 @@ def _text_to_pak_fast(text, font_size=60, fg=(255, 255, 255), bg=(30, 30, 30)):
     for i, line in enumerate(lines):
         draw.text((CENTER_X, int(y_positions[i])), line, fill=fg, font=font, anchor="mm")
 
-    return _image_to_pak(img, num_frames=1, quality=20)
+    jpeg = image_to_jpeg(img, quality=20)
+    return build_pak_from_jpeg_bytes([jpeg], num_frames=1)
 
 
 def make_text_pak(text, font_size=60, fg=(30, 30, 30), bg=(240, 240, 250)):
     """Generate PAK with centered text (accounts for bezel offset)."""
-    img = _make_image(bg=bg)
+    img = make_canvas(bg=bg)
     draw = ImageDraw.Draw(img)
-    font = _find_font(font_size)
+    font = find_font(font_size)
 
     lines = text.replace("\\n", "\n").split("\n")
     n = len(lines)
-
     line_spacing = font_size + 12
     y_positions = [CENTER_Y + (i - (n - 1) / 2.0) * line_spacing for i in range(n)]
 
     for i, line in enumerate(lines):
         draw.text((CENTER_X, int(y_positions[i])), line, fill=fg, font=font, anchor="mm")
 
-    return _image_to_pak(img)
+    jpeg = image_to_jpeg(img)
+    return build_pak_from_jpeg_bytes([jpeg], num_frames=3)
 
 
 def make_status_pak(status, message=""):
@@ -271,35 +212,33 @@ def make_status_pak(status, message=""):
 
 def make_image_pak(image_path, quality=60):
     """Generate PAK from an image file (resized to canvas)."""
-    img = _enhance_for_lcd(Image.open(image_path).convert("RGB"))
+    img = enhance_for_lcd(Image.open(image_path).convert("RGB"))
     img = img.resize((CANVAS_W, CANVAS_H), Image.LANCZOS)
-    return _image_to_pak(img, quality=quality)
+    return build_pak_from_jpeg_bytes([image_to_jpeg(img, quality=quality)], num_frames=3)
 
 
 def make_image_visible_pak(image_path, quality=60):
     """Generate PAK from an image, sized to the visible area (800x216)."""
-    img = _enhance_for_lcd(Image.open(image_path).convert("RGB"))
-    canvas = _make_image()
+    img = enhance_for_lcd(Image.open(image_path).convert("RGB"))
+    canvas = make_canvas()
     img_resized = img.resize((VISIBLE_W, VISIBLE_H), Image.LANCZOS)
     canvas.paste(img_resized, (VISIBLE_X, VISIBLE_Y))
-    return _image_to_pak(canvas, quality=quality)
+    return build_pak_from_jpeg_bytes([image_to_jpeg(canvas, quality=quality)], num_frames=3)
 
 
 def make_image_text_pak(image_path, text, font_size=36, text_bottom=True, quality=60):
     """Generate PAK with image in visible area + text overlay."""
-    img = _enhance_for_lcd(Image.open(image_path).convert("RGB"))
+    img = enhance_for_lcd(Image.open(image_path).convert("RGB"))
     img = img.resize((VISIBLE_W, VISIBLE_H), Image.LANCZOS)
 
-    # Overlay text
     draw = ImageDraw.Draw(img)
-    font = _find_font(font_size)
+    font = find_font(font_size)
 
     bbox = draw.textbbox((0, 0), text, font=font)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
 
     if text_bottom:
-        # Semi-transparent bar at bottom
         bar_h = th + 20
         overlay = Image.new("RGBA", (VISIBLE_W, bar_h), (0, 0, 0, 160))
         img_rgba = img.convert("RGBA")
@@ -314,10 +253,9 @@ def make_image_text_pak(image_path, text, font_size=36, text_bottom=True, qualit
     draw = ImageDraw.Draw(img)
     draw.text((tx, ty), text, fill=(255, 255, 255), font=font)
 
-    # Paste onto full canvas
-    canvas = _make_image()
+    canvas = make_canvas()
     canvas.paste(img, (VISIBLE_X, VISIBLE_Y))
-    return _image_to_pak(canvas, quality=quality)
+    return build_pak_from_jpeg_bytes([image_to_jpeg(canvas, quality=quality)], num_frames=3)
 
 
 # ── CLI ──
