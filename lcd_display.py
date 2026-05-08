@@ -76,7 +76,6 @@ class LCD5AController:
                     pass
                 print("[Connected] LCD5A ready")
                 return True
-                return True
 
         raise Exception("No LCD5A found in scan results.")
 
@@ -111,13 +110,26 @@ class LCD5AController:
         self._invoke("DeleteMov", name)
 
     def upload_and_play(self, file_path, name=None):
-        """Upload a PAK/GIF file and start playing it."""
+        """Upload a PAK/GIF file and start playing it.
+
+        GIFs are auto-converted to PAK first (the API's native GIF handler
+        produces a black screen on LCD5A hardware).
+        """
         file_path = os.path.abspath(file_path)
         if name is None:
             name = os.path.splitext(os.path.basename(file_path))[0]
 
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
+
+        # Auto-convert GIF to PAK to avoid black-screen bug
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in (".gif", ".giff"):
+            import tempfile
+            from gif_to_pak import gif_to_pak
+            tmp = tempfile.mktemp(suffix=".pak")
+            gif_to_pak(file_path, tmp, quality=60)
+            file_path = tmp
 
         size_kb = os.path.getsize(file_path) / 1024
         print(f"[Upload] {os.path.basename(file_path)} ({size_kb:.0f}KB) as '{name}'")
@@ -134,7 +146,6 @@ class LCD5AController:
             return True
         print("[FAIL] Upload returned false")
         return False
-
 
 # ── PAK generation ──
 
@@ -204,6 +215,23 @@ def _image_to_pak(img, num_frames=3, quality=30):
         current_offset = len(header) + len(frame_data)
 
     return header[:8] + offset_table + frame_data
+
+
+def _text_to_pak_fast(text, font_size=60, fg=(255, 255, 255), bg=(30, 30, 30)):
+    """Single-frame PAK for live text (fast upload)."""
+    img = _make_image(bg=bg)
+    draw = ImageDraw.Draw(img)
+    font = _find_font(font_size)
+
+    lines = text.replace("\\n", "\n").split("\n")
+    n = len(lines)
+    line_spacing = font_size + 12
+    y_positions = [CENTER_Y + (i - (n - 1) / 2.0) * line_spacing for i in range(n)]
+
+    for i, line in enumerate(lines):
+        draw.text((CENTER_X, int(y_positions[i])), line, fill=fg, font=font, anchor="mm")
+
+    return _image_to_pak(img, num_frames=1, quality=20)
 
 
 def make_text_pak(text, font_size=60, fg=(30, 30, 30), bg=(240, 240, 250)):
@@ -328,6 +356,9 @@ def main():
     p_upload.add_argument("path")
     p_upload.add_argument("name", nargs="?")
 
+    p_live = sub.add_parser("live", help="Interactive live text display")
+    p_live.add_argument("--size", type=int, default=60, help="Font size")
+
     sub.add_parser("done", help="Show success notification")
     p_fail = sub.add_parser("fail", help="Show failure notification")
     p_fail.add_argument("message", nargs="*")
@@ -382,6 +413,35 @@ def main():
             with open(TEMP_PAK, "wb") as f:
                 f.write(pak)
             lcd.upload_and_play(TEMP_PAK, "_imgtxt")
+
+        elif args.cmd == "live":
+            print("=== Live Text Mode ===")
+            print("Type text and press Enter to display on screen.")
+            print("Empty line or Ctrl+C to exit.")
+            print()
+            font_size = getattr(args, 'size', 60)
+            toggle = 0
+            while True:
+                try:
+                    text = input("> ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    print("\nBye.")
+                    break
+                if not text:
+                    break
+                # Double-buffer: upload to alternate slot so current
+                # text stays during upload, then flip via PlayMov.
+                slot = f"_lv{toggle}"
+                toggle ^= 1
+                pak = _text_to_pak_fast(text, font_size=font_size)
+                with open(TEMP_PAK, "wb") as f:
+                    f.write(pak)
+                lcd.upload_and_play(TEMP_PAK, slot)
+                try:
+                    lcd.delete(f"_lv{toggle}")
+                except Exception:
+                    pass
+                print("  -> displayed")
 
         elif args.cmd == "upload":
             lcd.upload_and_play(args.path, args.name)
