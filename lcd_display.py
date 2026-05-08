@@ -303,11 +303,14 @@ def main():
 
     p_switch = sub.add_parser("switch", help="Interactive switch between stored files")
 
-    sub.add_parser("done", help="Show success notification")
+    p_done = sub.add_parser("done", help="Show success notification")
+    p_done.add_argument("message", nargs="*")
     p_fail = sub.add_parser("fail", help="Show failure notification")
     p_fail.add_argument("message", nargs="*")
-    sub.add_parser("warn", help="Show warning notification")
-    sub.add_parser("info", help="Show info notification")
+    p_warn = sub.add_parser("warn", help="Show warning notification")
+    p_warn.add_argument("message", nargs="*")
+    p_info = sub.add_parser("info", help="Show info notification")
+    p_info.add_argument("message", nargs="*")
 
     args = parser.parse_args()
     if not args.cmd:
@@ -458,7 +461,7 @@ def main():
             lcd.upload_and_play(args.path, args.name)
 
         elif args.cmd in ("done", "fail", "warn", "info"):
-            msg = " ".join(args.message) if hasattr(args, 'message') and args.message else ""
+            msg = " ".join(getattr(args, 'message', []) or [])
             pak = make_status_pak(args.cmd, msg)
             with open(TEMP_PAK, "wb") as f:
                 f.write(pak)
