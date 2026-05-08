@@ -62,16 +62,14 @@ def image_to_jpeg(img, quality=30, rotate=True):
 
 
 def build_pak(frames, quality=60, rotate=True):
-    """Build PAK binary from list of PIL Image frames.
+    """Build PAK binary from list of PIL Image frames."""
+    jpeg_bytes_list = [image_to_jpeg(f, quality=quality, rotate=rotate) for f in frames]
+    return build_pak_from_jpeg_bytes(jpeg_bytes_list)
 
-    Each frame is JPEG-compressed, then packed:
-      [JP magic 2B][frame_count uint16 LE][0x0C uint32 LE]
-      [offset_table uint32 LE x N]
-      [frame: jpeg_size uint32 LE + jpeg_data + 4-byte align]
-    """
-    jpeg_frames = [image_to_jpeg(f, quality=quality, rotate=rotate) for f in frames]
 
-    n = len(jpeg_frames)
+def _pack_frames(jpeg_bytes_list):
+    """Low-level: pack JPEG bytes into PAK binary structure."""
+    n = len(jpeg_bytes_list)
     header = PAK_MAGIC + struct.pack("<HI", n, 0x0C)
     header += b"\x00" * (n * 4)
 
@@ -79,7 +77,7 @@ def build_pak(frames, quality=60, rotate=True):
     frame_data = b""
     current_offset = len(header)
 
-    for jpeg_data in jpeg_frames:
+    for jpeg_data in jpeg_bytes_list:
         offset_table += struct.pack("<I", current_offset)
         entry = struct.pack("<I", len(jpeg_data)) + jpeg_data
         while len(entry) % 4 != 0:
@@ -99,21 +97,4 @@ def build_pak_from_jpeg_bytes(jpeg_bytes_list, num_frames=None):
     if num_frames and num_frames > len(jpeg_bytes_list):
         repeat = num_frames // len(jpeg_bytes_list) + 1
         jpeg_bytes_list = (jpeg_bytes_list * repeat)[:num_frames]
-
-    n = len(jpeg_bytes_list)
-    header = PAK_MAGIC + struct.pack("<HI", n, 0x0C)
-    header += b"\x00" * (n * 4)
-
-    offset_table = b""
-    frame_data = b""
-    current_offset = len(header)
-
-    for jpeg_data in jpeg_bytes_list:
-        offset_table += struct.pack("<I", current_offset)
-        entry = struct.pack("<I", len(jpeg_data)) + jpeg_data
-        while len(entry) % 4 != 0:
-            entry += b"\x00"
-        frame_data += entry
-        current_offset = len(header) + len(frame_data)
-
-    return header[:8] + offset_table + frame_data
+    return _pack_frames(jpeg_bytes_list)

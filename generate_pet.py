@@ -8,7 +8,7 @@ import argparse
 import os
 import math
 from PIL import Image, ImageDraw
-from pak_utils import VISIBLE_W, VISIBLE_H, build_pak
+from pak_utils import CANVAS_W, CANVAS_H, VISIBLE_X, VISIBLE_Y, VISIBLE_W, VISIBLE_H, build_pak
 
 BG = (40, 42, 54)       # dark background
 CAT_BODY = (255, 180, 100)
@@ -163,7 +163,6 @@ def generate_frames(num_frames=30):
 def frames_to_pak(frames, quality=60, rotate=True):
     """Convert PIL Image frames to PAK binary. Frames are 800x216 (visible area),
     pasted onto full 1024x240 canvas before encoding."""
-    from pak_utils import CANVAS_W, CANVAS_H, VISIBLE_X, VISIBLE_Y
     full_frames = []
     for img in frames:
         canvas = Image.new("RGB", (CANVAS_W, CANVAS_H), (0, 0, 0))

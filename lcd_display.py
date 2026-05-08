@@ -161,40 +161,28 @@ class LCD5AController:
 # ── PAK generation ──
 
 
+def make_text_pak(text, font_size=60, fg=(30, 30, 30), bg=(240, 240, 250),
+                  quality=30, num_frames=3):
+    """Generate PAK with centered text."""
+    img = make_canvas(bg=bg)
+    draw = ImageDraw.Draw(img)
+    font = find_font(font_size)
+
+    lines = text.replace("\\n", "\n").split("\n")
+    n = len(lines)
+    line_spacing = font_size + 12
+    y_positions = [CENTER_Y + (i - (n - 1) / 2.0) * line_spacing for i in range(n)]
+
+    for i, line in enumerate(lines):
+        draw.text((CENTER_X, int(y_positions[i])), line, fill=fg, font=font, anchor="mm")
+
+    jpeg = image_to_jpeg(img, quality=quality)
+    return build_pak_from_jpeg_bytes([jpeg], num_frames=num_frames)
+
+
 def _text_to_pak_fast(text, font_size=60, fg=(255, 255, 255), bg=(30, 30, 30)):
     """Single-frame PAK for live text (fast upload)."""
-    img = make_canvas(bg=bg)
-    draw = ImageDraw.Draw(img)
-    font = find_font(font_size)
-
-    lines = text.replace("\\n", "\n").split("\n")
-    n = len(lines)
-    line_spacing = font_size + 12
-    y_positions = [CENTER_Y + (i - (n - 1) / 2.0) * line_spacing for i in range(n)]
-
-    for i, line in enumerate(lines):
-        draw.text((CENTER_X, int(y_positions[i])), line, fill=fg, font=font, anchor="mm")
-
-    jpeg = image_to_jpeg(img, quality=20)
-    return build_pak_from_jpeg_bytes([jpeg], num_frames=1)
-
-
-def make_text_pak(text, font_size=60, fg=(30, 30, 30), bg=(240, 240, 250)):
-    """Generate PAK with centered text (accounts for bezel offset)."""
-    img = make_canvas(bg=bg)
-    draw = ImageDraw.Draw(img)
-    font = find_font(font_size)
-
-    lines = text.replace("\\n", "\n").split("\n")
-    n = len(lines)
-    line_spacing = font_size + 12
-    y_positions = [CENTER_Y + (i - (n - 1) / 2.0) * line_spacing for i in range(n)]
-
-    for i, line in enumerate(lines):
-        draw.text((CENTER_X, int(y_positions[i])), line, fill=fg, font=font, anchor="mm")
-
-    jpeg = image_to_jpeg(img)
-    return build_pak_from_jpeg_bytes([jpeg], num_frames=3)
+    return make_text_pak(text, font_size=font_size, fg=fg, bg=bg, quality=20, num_frames=1)
 
 
 def make_status_pak(status, message=""):
@@ -216,7 +204,7 @@ def make_status_pak(status, message=""):
 def make_image_pak(image_path, quality=60):
     """Generate PAK from an image file (resized to canvas)."""
     img = enhance_for_lcd(Image.open(image_path).convert("RGB"))
-    img = img.resize((CANVAS_W, CANVAS_H), Image.LANCZOS)
+    img = img.resize((CANVAS_W, CANVAS_H), Image.Resampling.LANCZOS)
     return build_pak_from_jpeg_bytes([image_to_jpeg(img, quality=quality)], num_frames=3)
 
 
@@ -224,7 +212,7 @@ def make_image_visible_pak(image_path, quality=60):
     """Generate PAK from an image, sized to the visible area (800x216)."""
     img = enhance_for_lcd(Image.open(image_path).convert("RGB"))
     canvas = make_canvas()
-    img_resized = img.resize((VISIBLE_W, VISIBLE_H), Image.LANCZOS)
+    img_resized = img.resize((VISIBLE_W, VISIBLE_H), Image.Resampling.LANCZOS)
     canvas.paste(img_resized, (VISIBLE_X, VISIBLE_Y))
     return build_pak_from_jpeg_bytes([image_to_jpeg(canvas, quality=quality)], num_frames=3)
 
@@ -232,7 +220,7 @@ def make_image_visible_pak(image_path, quality=60):
 def make_image_text_pak(image_path, text, font_size=36, text_bottom=True, quality=60):
     """Generate PAK with image in visible area + text overlay."""
     img = enhance_for_lcd(Image.open(image_path).convert("RGB"))
-    img = img.resize((VISIBLE_W, VISIBLE_H), Image.LANCZOS)
+    img = img.resize((VISIBLE_W, VISIBLE_H), Image.Resampling.LANCZOS)
 
     draw = ImageDraw.Draw(img)
     font = find_font(font_size)

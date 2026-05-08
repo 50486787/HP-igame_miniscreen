@@ -17,7 +17,7 @@ from pak_utils import (CANVAS_W, CANVAS_H, VISIBLE_X, VISIBLE_Y,
 def gif_to_frames(gif_path, canvas_w=CANVAS_W, canvas_h=CANVAS_H,
                   visible_w=VISIBLE_W, visible_h=VISIBLE_H,
                   visible_x=VISIBLE_X, visible_y=VISIBLE_Y,
-                  quality=60, enhance=True, rotate=True):
+                  enhance=True):
     """Extract frames from GIF, return list of PIL Image frames."""
     gif = Image.open(gif_path)
     frames = []
@@ -26,7 +26,7 @@ def gif_to_frames(gif_path, canvas_w=CANVAS_W, canvas_h=CANVAS_H,
         gif.seek(i)
         frame = gif.convert("RGB")
 
-        resized = frame.resize((visible_w, visible_h), Image.LANCZOS)
+        resized = frame.resize((visible_w, visible_h), Image.Resampling.LANCZOS)
         canvas = Image.new("RGB", (canvas_w, canvas_h), (0, 0, 0))
         canvas.paste(resized, (visible_x, visible_y))
 
@@ -46,7 +46,7 @@ def gif_to_pak(gif_path, pak_path, quality=60, enhance=True, rotate=True,
         gif_path, canvas_w=canvas_w, canvas_h=canvas_h,
         visible_w=visible_w, visible_h=visible_h,
         visible_x=visible_x, visible_y=visible_y,
-        quality=quality, enhance=enhance, rotate=rotate,
+        enhance=enhance,
     )
 
     pak_data = build_pak(frames, quality=quality, rotate=rotate)
