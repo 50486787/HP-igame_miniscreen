@@ -303,6 +303,8 @@ def main():
 
     p_switch = sub.add_parser("switch", help="Interactive switch between stored files")
 
+    sub.add_parser("setup-status", help="Pre-upload status images (run once)")
+
     p_done = sub.add_parser("done", help="Show success notification")
     p_done.add_argument("message", nargs="*")
     p_fail = sub.add_parser("fail", help="Show failure notification")
@@ -456,6 +458,28 @@ def main():
                     lcd.play(name)
                 else:
                     print("  Invalid choice")
+
+        elif args.cmd == "setup-status":
+            statuses = [
+                ("_idle", (0, 0, 0), ""),
+                ("_working", (40, 80, 200), "工作中..."),
+                ("_done", (40, 160, 40), "完成"),
+                ("_fail", (200, 40, 40), "失败"),
+                ("_info", (40, 80, 200), "提示"),
+            ]
+            for name, bg, text in statuses:
+                print(f"[Setup] {name}: {text}")
+                img = make_canvas(bg=bg)
+                draw = ImageDraw.Draw(img)
+                font = find_font(72)
+                draw.text((CENTER_X, CENTER_Y), text, fill=(255, 255, 255),
+                          font=font, anchor="mm")
+                jpeg = image_to_jpeg(img, quality=30)
+                pak = build_pak_from_jpeg_bytes([jpeg], num_frames=1)
+                with open(TEMP_PAK, "wb") as f:
+                    f.write(pak)
+                lcd.upload_and_play(TEMP_PAK, name)
+            print("[OK] Status images ready. Use: play _idle/_working/_done/_fail/_info")
 
         elif args.cmd == "upload":
             lcd.upload_and_play(args.path, args.name)
