@@ -1,6 +1,3 @@
-# iGame API binaries (proprietary, from iGameCenter installation)
-bin/
-
 # Python
 __pycache__/
 *.pyc
