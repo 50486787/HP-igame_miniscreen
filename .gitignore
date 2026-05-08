@@ -2,8 +2,10 @@
 __pycache__/
 *.pyc
 
-# Output files
-output/
+# Output files (only status images tracked)
+output/**
+!output/status/
+!output/status/*.jpg
 _temp_*.pak
 *.pak
 
