@@ -5,7 +5,8 @@ bin/
 __pycache__/
 *.pyc
 
-# Temp files
+# Output files
+output/
 _temp_*.pak
 *.pak
 
