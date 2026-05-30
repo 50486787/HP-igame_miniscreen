@@ -119,3 +119,54 @@ Skills 位于 `.claude/skills/` 目录，每个 skill 有独立的 `SKILL.md` �
 
 如果你认为哪怕只有 1% 的可能性某个 skill 适用于你正在做的事情，你必须调用该 skill 检查。
 <!-- superpowers-zh:end -->
+
+---
+
+## Hook System — 小屏幕状态钩子
+
+### 概述
+
+`hook.py` 通过 Claude Code 的 Session Hooks 将小屏幕用作状态指示器：
+- 会话开始 → 熄屏（`_idle`）
+- 用户输入 → 蓝底"Working"（`_working`）  
+- 回复完成 → 绿底"Done"（`_done`），60 秒后熄屏
+- 异常退出 → 红底"Fail"（`_fail`）
+
+### 前置条件
+
+状态图首次需要上传到设备（只需一次）：
+```powershell
+python lcd_display.py setup-status
+```
+
+### 使用
+
+```
+python hook.py working   # 工作中
+python hook.py done      # 完成
+python hook.py fail      # 失败
+python hook.py off       # 熄屏
+```
+
+### 通信路径
+
+`hook.py` 有两条通信路径，按优先级自动回退：
+
+| 路径 | 条件 | 机制 |
+|------|------|------|
+| **API** (优先) | LCD 直插主机 USB / 有虚拟 COM 口 | `lcd_display.py` → `GetLCDGeneralCOM` |
+| **HID** (回退) | LCD 插屏幕 USB hub / 无 COM 口 | 直接 USB HID feature report → Col01 控制接口 |
+
+### 故障排查
+
+**`No iGame LCD device found`**：
+1. **iGameCenter 服务抢占设备** — 最常见原因。`sc stop iGameCenterService` 停掉服务，hook 走 HID 路径即可工作。
+2. **USB 口不暴露 COM 口** — 屏幕 USB hub 通常不转发虚拟 COM 口，换直插主机 USB。
+3. **首次使用需先上传状态图** — 运行 `python lcd_display.py setup-status`。
+
+**关键经验（2026-05-30）**：
+- 直插主机 USB → 虚拟 COM 口出现 → API 路径通 → 不需要停服务
+- 插屏幕 USB hub → 无 COM 口 → 必须停 iGameCenter 服务 → HID 路径通
+- `GetLCDGeneralCOM` 返回 None 不是权限问题，是物理 USB 路径决定 COM 口是否枚举
+- HID 命令必须发到 **MI_01 Col01**（vendor control），不是 MI_00（标准 HID）
+- Feature report 格式：`reportID(1B) + header(1B) + cmdID(2B LE) + bodyLen(1B) + body + xorChecksum(1B)`，填到 65 字节
